@@ -19,7 +19,6 @@ class clientThread(object):
         self.host = host
         self.port = port
         self.socket = socket(AF_INET, SOCK_STREAM)
-        #set sock opt
         self.socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         self.socket.bind((self.host, self.port))
     # main thread that listens for other connections
@@ -30,82 +29,64 @@ class clientThread(object):
             threading.Thread(target = self.listenToClient,args = (connection,address)).start()
     #client threads that listen for messages
     def listenToClient(self, connection, address):
+        clients.append(address)
         buffer = 1024
         login = False
         while True:
-            print(address + " connected\n")
-            connection.send("enter username:".encode('utf-8'))
+            #sendMessage(connection, "Enter your username:")
+            userAuthentication(connection, buffer)
             try:
                 data = connection,recv(buffer)
                 if data:
-                    print(address + " connected\n")
-                    clients.append(address)
-                    connection.send("enter username:")
+                    responseHandler(data)
                 else:
                     print("client disconnected")
             except:
                 connection.close()
                 return False
 
-# thread fuction 
-def threaded(connection): 
-    while True: 
-        # data received from client 
-        data = connection.recv(1024) 
-        if not data: 
-            print('Bye') 
-            # lock released on exit 
-            lock.release() 
-            break
-        # reverse the given string from client 
-        data = data[::-1] 
-        # send back reversed string to client 
-        connection.send(data) 
-    c.close() 
-
 def Main():
-    
-
-    #will store clients info in this list (threads)
-    #clients=[]
     # would communicate with clients after every second
     UPDATE_INTERVAL= 1
+    #run listening thread on localhost:
     clientThread('', port).listen()
-    #s = socket(AF_INET, SOCK_STREAM)
-    #host = ''
-    #s.bind((host, port))   
-    while False: 
-        s.listen(1)
-        connection, address = s.accept()  
-        lock.acquire() 
-        print('Connected to :', address[0], ':', address[1]) 
-  
-        # Start a new thread and return its identifier 
-        start_new_thread(threaded, (connection,)) 
-    #s.close() 
 
-def mssgsend(client, message):
-    print("hi")
+def Ask(connection, buffer, question):
+    message = "question " + question
+    connection.send(message.encode('utf-8'))
+    while True:
+        data = connection.recv(buffer).decode('utf-8')
+        if data:
+            return data
+def sendStatement(connection, buffer, statement):
+    message = "statement" + statement
+    connection.send(message.encode('utf-8'))
 
-def userAuthentication():
-    credentials = credentials()
+def responseHandler(data):
+    message = data.decode('utf-8')
+    head = message.split(' ', 1)[0]
+
+def userAuthentication(connection, buffer):
+    credentials = dictionaryCredentials()
     fails = 0
     while True:
-        username = input("Enter your username:")
+        username = Ask(connection, buffer, "Enter your username:")
         if username in credentials:
-            password = input("Enter your password:")
+            password = Ask(connection, buffer,"Enter your password:")
             if credentials[username] == password:
                 return True
+            else:
+                sendStatement(connection, buffer, "Invalid login. Try again.")
         else:
-            print("Invalid username")
+            sendStatement(connection, buffer, "Invalid username. Try again.")
         fails += 1
         #for blocking after 3, implement later
 
 
 # Returns dictionary with username-password pairs
-def credentials():
+def dictionaryCredentials():
     d = {}
-    credentials = open("credentials.txt", "rw+")
+    credentials = open("credentials.txt", "r+")
     for line in credentials:
         (username, password) = line.split()
         d[username] = password
