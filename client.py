@@ -4,30 +4,35 @@ import sys
 #Server would be running on the same host as Client
 IP = sys.argv[1]
 port = int(sys.argv[2])
+buffer = 1024
 
 def Main(): 
-    s = socket(AF_INET, SOCK_STREAM)
+    sock = socket(AF_INET, SOCK_STREAM)
     # connect to server on local computer 
-    s.connect((IP,port)) 
+    sock.connect((IP,port)) 
     # message you send to server 
     while True: 
-
-        # message sent to server 
-        # messaga received from server 
-        data = s.recv(1024) 
-
+        data = sock.recv(buffer) 
+        if data:
+            recieveHandler(data, sock)
         # print the received message 
         # here it would be a reverse of sent message 
-        print('Received from the server :',str(data.decode('ascii'))) 
+        #print('Received from the server :',str(data.decode('ascii'))) 
   
-        # ask the client whether he wants to continue 
-        ans = input('\nDo you want to continue(y/n) :') 
-        if ans == 'y': 
-            continue
-        else: 
-            break
+
     # close the connection 
-    s.close() 
+    socket.close() 
+def recieveHandler(data, sock):
+    decoded = data.decode('utf-8')
+    split = decoded.split(' ', 1)
+    head = split[0]
+    message = split[1]
+    if head == "question":
+        response = input(message + " ")
+        encoded = response.encode('utf-8')
+        sock.sendto(encoded, (IP, port))
+    if head == "statement":
+        print(message)
 
 if __name__ == '__main__': 
     Main() 
