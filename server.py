@@ -9,8 +9,10 @@ import sys
 #global variables:
 port = int(sys.argv[1])
 blockTime = int(sys.argv[2])
-timeout=int(sys.argv[3])
-clients = []
+timeOut=int(sys.argv[3])
+clients = {}
+times = {}
+buffer = 4096
 #lock = threading.Lock()
 
 #inspiration from https://stackoverflow.com/questions/23828264/how-to-make-a-simple-multithreaded-socket-server-in-python-that-remembers-client
@@ -29,59 +31,107 @@ class clientThread(object):
             threading.Thread(target = self.listenToClient,args = (connection,address)).start()
     #client threads that listen for messages
     def listenToClient(self, connection, address):
-        clients.append(address)
-        buffer = 1024
-        login = False
+        #at connection of new client, authenticate and store deatils in dictionary
+        username = userAuthentication(connection)
+        broadcast(username + " has logged in")
+        clients[username] = connection
+        times[username] = time.time()
+        #always listen for data coming in from client, if recieve data, handle request
+        #if havent received data for timeout seconds, 
         while True:
-            #sendMessage(connection, "Enter your username:")
-            userAuthentication(connection, buffer)
-            try:
-                data = connection,recv(buffer)
-                if data:
-                    responseHandler(data)
-                else:
-                    print("client disconnected")
-            except:
-                connection.close()
-                return False
+            data = connection.recv(buffer)
+            if data:
+                responseHandler(data, username)
+            #except:
+           #     print('except')
+            #    broadcast(username + " has logged out")
+             #   del clients[username]
+              #  connection.close()
+               # return
 
 def Main():
-    # would communicate with clients after every second
-    UPDATE_INTERVAL= 1
     #run listening thread on localhost:
     clientThread('', port).listen()
 
-def Ask(connection, buffer, question):
+#REMEMBER TO PUT A SPACE AFTER HEADRER WORD YA DUMB IDIOT
+def sendQuestion(connection, question):
     message = "question " + question
     connection.send(message.encode('utf-8'))
     while True:
         data = connection.recv(buffer).decode('utf-8')
         if data:
             return data
-def sendStatement(connection, buffer, statement):
-    message = "statement" + statement
+
+def sendStatement(connection, statement):
+    message = "statement " + statement
     connection.send(message.encode('utf-8'))
 
-def responseHandler(data):
-    message = data.decode('utf-8')
-    head = message.split(' ', 1)[0]
+def responseHandler(data, username):
+    decoded = data.decode('utf-8')
+    print(decoded)
+    if "\n" in decoded:
+        decoded = decoded.strip('\n')
+    print(decoded)
+    split = decoded.split(' ', 1)
+    head = split[0]
+    if split[0]!=decoded:
+        message = split[1]
+        if head == "message":
+            split2 = message.split(' ', 1)
+            user = split2[0]
+            msgcontent = username + ": " + split2[1]
+            connection = clients[user]
+            sendStatement(connection, msgcontent)
+            print("sent: " + message)
+        if head == "broadcast":
+            broadcast(message)
+        if head == "whoelsesince":
+            whoelsesince(username, int(message))
+        if head == "block":
+            print("block")
+        if head == "unblock":
+            print("unblock")
+    elif decoded == "whoelse":
+        whoelse(username)
+    elif decoded == "logout":
+        print("logout")
 
-def userAuthentication(connection, buffer):
+def userAuthentication(connection):
     credentials = dictionaryCredentials()
     fails = 0
     while True:
-        username = Ask(connection, buffer, "Enter your username:")
-        if username in credentials:
-            password = Ask(connection, buffer,"Enter your password:")
-            if credentials[username] == password:
-                return True
-            else:
-                sendStatement(connection, buffer, "Invalid login. Try again.")
+        if fails == 3:
+            break
+        username = sendQuestion(connection, "Enter your username:")
+        print(username)
+        password = sendQuestion(connection, "Enter your password:")
+        print(password)
+        if username in credentials and credentials[username] == password:
+            sendStatement(connection, "Logged in! :)")
+            print("returning: " + username)
+            return username
         else:
-            sendStatement(connection, buffer, "Invalid username. Try again.")
-        fails += 1
-        #for blocking after 3, implement later
+            sendStatement(connection, "Invalid login. Try again.\n")     
+            fails += 1
 
+def whoelse(username):
+    for item in clients:
+        if item != username:
+            sendStatement(clients[username], item)
+
+def whoelsesince(username, time):
+    timeSince = time.time() - time
+    for item in times:
+        if times[item] >= timeSince & item != username:
+            sendStatement(clients[username], item)
+
+def broadcast(broadcast):
+    for item in clients:
+        sendStatement(clients[item], broadcast)
+
+def listCurrentUsers(connection):
+    for item in clients:
+        sendStatement(connection, item)
 
 # Returns dictionary with username-password pairs
 def dictionaryCredentials():
