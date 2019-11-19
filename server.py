@@ -1,7 +1,6 @@
 import socket
 from socket import *
 import threading
-#from thread import *
 import time
 import datetime as dt
 import sys
@@ -13,7 +12,6 @@ timeOut=int(sys.argv[3])
 clients = {}
 times = {}
 buffer = 4096
-#lock = threading.Lock()
 
 #inspiration from https://stackoverflow.com/questions/23828264/how-to-make-a-simple-multithreaded-socket-server-in-python-that-remembers-client
 class clientThread(object):
@@ -37,17 +35,11 @@ class clientThread(object):
         clients[username] = connection
         times[username] = time.time()
         #always listen for data coming in from client, if recieve data, handle request
-        #if havent received data for timeout seconds, 
+        #if havent received data for timeout seconds, log out client #NEED TO IMPLEMENT
         while True:
             data = connection.recv(buffer)
             if data:
                 responseHandler(data, username)
-            #except:
-           #     print('except')
-            #    broadcast(username + " has logged out")
-             #   del clients[username]
-              #  connection.close()
-               # return
 
 def Main():
     #run listening thread on localhost:
@@ -57,10 +49,6 @@ def Main():
 def sendQuestion(connection, question):
     message = "question " + question
     connection.send(message.encode('utf-8'))
-    while True:
-        data = connection.recv(buffer).decode('utf-8')
-        if data:
-            return data
 
 def sendStatement(connection, statement):
     message = "statement " + statement
@@ -102,10 +90,18 @@ def userAuthentication(connection):
     while True:
         if fails == 3:
             break
-        username = sendQuestion(connection, "Enter your username:")
-        print(username)
-        password = sendQuestion(connection, "Enter your password:")
-        print(password)
+        sendQuestion(connection, "Enter your username:")
+        data = connection.recv(buffer)
+        if data:
+            username = data.decode('utf-8')
+            print(username)
+        else:
+            print("recived message not valid")
+        sendQuestion(connection, "Enter your password:")
+        data = connection.recv(buffer)
+        if data:
+            password = data.decode('utf-8')
+            print(password)
         if username in credentials and credentials[username] == password:
             sendStatement(connection, "Logged in! :)")
             print("returning: " + username)
