@@ -7,45 +7,47 @@ import sys
 
 #global variables:
 port = int(sys.argv[1])
-blockTime = int(sys.argv[2])
+blockDuration = int(sys.argv[2])
 timeOut=int(sys.argv[3])
+buffer = 4096
 clients = {}
 times = {}
-buffer = 4096
+blockLogin = []
 
-#inspiration from https://stackoverflow.com/questions/23828264/how-to-make-a-simple-multithreaded-socket-server-in-python-that-remembers-client
-class clientThread(object):
-    def __init__(self, host, port):
-        self.host = host
-        self.port = port
-        self.socket = socket(AF_INET, SOCK_STREAM)
-        self.socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        self.socket.bind((self.host, self.port))
-    # main thread that listens for other connections
-    def listen(self):
-        self.socket.listen(1)
-        while True:
-            connection, address = self.socket.accept()
-            threading.Thread(target = self.listenToClient,args = (connection,address)).start()
-    #client threads that listen for messages
-    def listenToClient(self, connection, address):
-        #at connection of new client, authenticate and store deatils in dictionary
-        username = userAuthentication(connection)
-        broadcast(username + " has logged in")
-        clients[username] = connection
-        times[username] = time.time()
-        #always listen for data coming in from client, if recieve data, handle request
-        #if havent received data for timeout seconds, log out client #NEED TO IMPLEMENT
-        while True:
-            data = connection.recv(buffer)
-            if data:
-                responseHandler(data, username)
+def listen(s):
+    s.listen(1)
+    while True:
+        connection, address = s.accept()
+        threading.Thread(target = listenToClient,args = (connection,address)).start()
+
+def listenToClient(connection, address):
+    username = userAuthentication(connection)
+    #block after 3 fails:
+    split = username.split(' ', 1)
+    if split[0] == "blockLogin":
+        print("blocking " + split[1])
+        sendStatement(connection, "3 unsuccessful login attempts. Wait "+ str(blockDuration) + " seconds and try again")
+        blockLogin.append(split[1])
+        timer = threading.Timer(blockDuration, self.listenToClient, args = (connection,address))
+    #let others know user has logged in, store pertinent user info in dictionaries
+    broadcast(username + " has logged in")
+    clients[username] = connection
+    times[username] = time.time()
+    #list of users this user has blocked
+    blocked = [] 
+    #if havent received data for timeout seconds, log out client #NEED TO IMPLEMENT
+    while True:
+        data = connection.recv(buffer)
+        if data:
+            responseHandler(data, username, blocked)
 
 def Main():
-    #run listening thread on localhost:
-    clientThread('', port).listen()
+    s = socket(AF_INET, SOCK_STREAM)
+    s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+    host = ''
+    s.bind((host, port))
+    listen(s)
 
-#REMEMBER TO PUT A SPACE AFTER HEADRER WORD YA DUMB IDIOT
 def sendQuestion(connection, question):
     message = "question " + question
     connection.send(message.encode('utf-8'))
@@ -54,9 +56,9 @@ def sendStatement(connection, statement):
     message = "statement " + statement
     connection.send(message.encode('utf-8'))
 
-def responseHandler(data, username):
+def responseHandler(data, username, blocked):
+    valid = False
     decoded = data.decode('utf-8')
-    print(decoded)
     if "\n" in decoded:
         decoded = decoded.strip('\n')
     print(decoded)
@@ -65,31 +67,45 @@ def responseHandler(data, username):
     if split[0]!=decoded:
         message = split[1]
         if head == "message":
-            split2 = message.split(' ', 1)
-            user = split2[0]
-            msgcontent = username + ": " + split2[1]
-            connection = clients[user]
-            sendStatement(connection, msgcontent)
-            print("sent: " + message)
-        if head == "broadcast":
+            valid = True
+            split2 = message.split(' ', 2)
+            via = split2[0]
+            print(via)
+            to = split2[1]
+            print(to)
+            if via not in blocked:
+                msgcontent = username + ": " + split2[2]
+                connection = clients[to]
+                sendStatement(connection, msgcontent)
+        elif head == "broadcast":
+            valid = True
             broadcast(message)
-        if head == "whoelsesince":
+        elif head == "whoelsesince":
+            valid = True
             whoelsesince(username, int(message))
-        if head == "block":
-            print("block")
-        if head == "unblock":
-            print("unblock")
+        elif head == "block":
+            valid = True
+            blocked.append(message)
+        elif head == "unblock":
+            valid = True
+            blocked.remove(message)
     elif decoded == "whoelse":
+        valid = True
         whoelse(username)
     elif decoded == "logout":
+        valid = True
         print("logout")
+    elif decoded == "":
+        valid = True
+        None
+    if valid == False:
+        sendStatement(clients[username], "Error. Invalid command.")
 
 def userAuthentication(connection):
     credentials = dictionaryCredentials()
     fails = 0
-    while True:
-        if fails == 3:
-            break
+    while fails < 3:
+        print("fails: "+str(fails))
         sendQuestion(connection, "Enter your username:")
         data = connection.recv(buffer)
         if data:
@@ -102,28 +118,34 @@ def userAuthentication(connection):
         if data:
             password = data.decode('utf-8')
             print(password)
+        else:
+            print("recived message not valid")
         if username in credentials and credentials[username] == password:
-            sendStatement(connection, "Logged in! :)")
+            #sendStatement(connection, "Logged in! :)")
             print("returning: " + username)
+            message = "username " + username
+            connection.send(message.encode('utf-8'))
             return username
         else:
             sendStatement(connection, "Invalid login. Try again.\n")     
             fails += 1
+    print("blockLogin")
+    return "blockLogin " + username
 
 def whoelse(username):
     for item in clients:
         if item != username:
             sendStatement(clients[username], item)
 
-def whoelsesince(username, time):
-    timeSince = time.time() - time
+def whoelsesince(username, since):
+    timeSince = time.time() - since
     for item in times:
-        if times[item] >= timeSince & item != username:
+        if (times[item] >= timeSince) & (item != username):
             sendStatement(clients[username], item)
 
 def broadcast(broadcast):
     for item in clients:
-        sendStatement(clients[item], broadcast)
+        sendStatement((clients[item]), broadcast)
 
 def listCurrentUsers(connection):
     for item in clients:

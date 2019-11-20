@@ -8,16 +8,27 @@ import time
 host = sys.argv[1]
 port = int(sys.argv[2])
 buffer = 4096
-UPDATE_INTERVAL = 0.5
+UPDATE_INTERVAL = 0.001
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+login = False
+myUsername = ''
 
 def Main(): 
     #s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    global login
     try:
         s.connect((host, port)) 
         print("connected to "+host)
     except:
         print("---> Server not running")
+
+    #while authenticiating, only listen for incoming data
+    while login == False:
+        data = s.recv(buffer)
+        if data:
+            recieveHandler(data, s)
+    
+    #after login = True, begin a recieveing and sending thread
     recv_thread=threading.Thread(name="reciever", target=reciever)
     recv_thread.daemon=True
 
@@ -26,57 +37,58 @@ def Main():
 
     #send and recieve simultaniuosly
     while True:
-        recv_thread.start()
         send_thread.start()
-        time.sleep(UPDATE_INTERVAL)
+        recv_thread.start()
         recv_thread.join()
-        send_thred.join()
+        send_thread.join()
 
 def reciever():
     while True:
-        print("here rec")
         data = s.recv(buffer)
-        print(data)
-        while data:
-            print("rec data")
+        if data:
             recieveHandler(data, s)
-        time.sleep(UPDATE_INTERVAL)
-        print("time sleep")
+            time.sleep(UPDATE_INTERVAL)
 
 def sender():
-    message = ""
-    while True:
+    global login
+    while login:
         sys.stdout.write('> ')
-        print("here")
+        sys.stdout.flush()
         message = sys.stdin.readline()
-        if message != "": 
-            print("here mess")          
+        if message: 
+            split = message.split(' ', 1)
+            #if sending message, must tag on your username incase the reciever has blocked you
+            if split[0] == "message":
+                message = split[0] + " " + myUsername + " " + split[1]
             sendHandler(message, s)
-        time.sleep(UPDATE_INTERVAL)
-        print("time sleep")
-    recieve.close()
-    send.close()
+            time.sleep(UPDATE_INTERVAL)
 
 #doesn't succesfully remove header for everything
 def recieveHandler(encoded, s):
+    global login
     decoded = encoded.decode('utf-8')
     split = decoded.split(' ', 1)
     head = split[0]
     message = split[1]
-
     if head == "question":
-        response = input(message + " ")
+        response = input("> " +message + " ")
         encoded = response.encode('utf-8')
         s.sendto(encoded, (host, port))
+
+    #might swicth to this later
+    elif head == "username":
+        myUsername = message
+        login = True
+        print("Logged in! :)")
     elif head == "statement":
-        print(message)
+        print("> " + message)
+        sys.stdout.flush()
     else:
         print("not expected header")
 
 def sendHandler(decoded, s):
     encoded = decoded.encode('utf-8')
     s.sendto(encoded, (host, port))
-    
     
 if __name__ == '__main__': 
     Main() 
