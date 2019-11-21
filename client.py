@@ -2,6 +2,7 @@ import socket
 import threading
 import select
 import sys
+import os
 import time
 
 #Server would be running on the same host as Client
@@ -36,7 +37,7 @@ def Main():
     send_thread.daemon=True
 
     #send and recieve simultaniuosly
-    while True:
+    while login:
         send_thread.start()
         recv_thread.start()
         recv_thread.join()
@@ -47,10 +48,11 @@ def reciever():
         data = s.recv(buffer)
         if data:
             recieveHandler(data, s)
-            time.sleep(UPDATE_INTERVAL)
+            #time.sleep(UPDATE_INTERVAL)
 
 def sender():
     global login
+    global myUsername
     while login:
         sys.stdout.write('> ')
         sys.stdout.flush()
@@ -61,11 +63,13 @@ def sender():
             if split[0] == "message":
                 message = split[0] + " " + myUsername + " " + split[1]
             sendHandler(message, s)
-            time.sleep(UPDATE_INTERVAL)
+            #time.sleep(UPDATE_INTERVAL)
 
 #doesn't succesfully remove header for everything
 def recieveHandler(encoded, s):
     global login
+    global myUsername
+    sys.stdout.flush()
     decoded = encoded.decode('utf-8')
     split = decoded.split(' ', 1)
     head = split[0]
@@ -74,15 +78,15 @@ def recieveHandler(encoded, s):
         response = input("> " +message + " ")
         encoded = response.encode('utf-8')
         s.sendto(encoded, (host, port))
-
-    #might swicth to this later
     elif head == "username":
         myUsername = message
         login = True
-        print("Logged in! :)")
+        print("> Logged in! :)")
     elif head == "statement":
         print("> " + message)
-        sys.stdout.flush()
+        if message == "You have logged out.":
+            login = False
+            os._exit(0)
     else:
         print("not expected header")
 
