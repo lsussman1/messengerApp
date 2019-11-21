@@ -5,7 +5,6 @@ import sys
 import os
 import time
 
-#Server would be running on the same host as Client
 host = sys.argv[1]
 port = int(sys.argv[2])
 buffer = 4096
@@ -15,7 +14,6 @@ login = False
 myUsername = ''
 
 def Main(): 
-    #s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     global login
     try:
         s.connect((host, port)) 
@@ -43,13 +41,14 @@ def Main():
         recv_thread.join()
         send_thread.join()
 
+#recieving thread: continuosly loops, checking for recived data. If data, handle.
 def reciever():
     while True:
         data = s.recv(buffer)
         if data:
             recieveHandler(data, s)
-            #time.sleep(UPDATE_INTERVAL)
 
+#sending thread: continously checks if the user has typed a command. If  they do, handle.
 def sender():
     global login
     global myUsername
@@ -58,14 +57,10 @@ def sender():
         sys.stdout.flush()
         message = sys.stdin.readline()
         if message: 
-            split = message.split(' ', 1)
-            #if sending message, must tag on your username incase the reciever has blocked you
-            if split[0] == "message":
-                message = split[0] + " " + myUsername + " " + split[1]
             sendHandler(message, s)
-            #time.sleep(UPDATE_INTERVAL)
 
-#doesn't succesfully remove header for everything
+#handles types of data the server may send
+#the server sends data in the format [header] + [data]
 def recieveHandler(encoded, s):
     global login
     global myUsername
@@ -74,22 +69,29 @@ def recieveHandler(encoded, s):
     split = decoded.split(' ', 1)
     head = split[0]
     message = split[1]
+    #if they recieve a question, imediaetly get user input and send answer back to server
     if head == "question":
         response = input("> " +message + " ")
         encoded = response.encode('utf-8')
         s.sendto(encoded, (host, port))
+    #if they recieve username, store username and confirm login to user
     elif head == "username":
         myUsername = message
         login = True
         print("> Logged in! :)")
+    #if they recieve a statement, simply print it to the screen.
+    #for certain messages, close the client application
     elif head == "statement":
         print("> " + message)
         if message == "You have logged out.":
             login = False
             os._exit(0)
+        if message.split('.', 1)[0] == "3 unsuccessful login attempts":
+            os._exit(0)
     else:
         print("not expected header")
 
+#encodes user messsage and ships it off to server
 def sendHandler(decoded, s):
     encoded = decoded.encode('utf-8')
     s.sendto(encoded, (host, port))
